@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>🎯 로또 패턴 예측기 PRO</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#07090f;--bg2:#0d1118;--bg3:#121820;--card:#1a1e2e;
+  --line:#1e2636;--line2:#2a3550;--text:#dce6f5;--muted:#4a6080;--sub:#7986cb;
+  --pink:#ff5fa5;--pink2:#ff9acb;--gold:#ffd700;--gold2:#ffb300;
+  --green:#00e676;--red:#ff3d3d;--blue:#448aff;--purple:#c084fc;
+  --shadow:0 8px 32px rgba(0,0,0,.4);
+}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);
+  font-family:"Apple SD Gothic Neo","Malgun Gothic","Segoe UI",sans-serif;
+  -webkit-text-size-adjust:100%;}
+
+/* ── 헤더 ── */
+.header{background:linear-gradient(135deg,#1a0d2e,#0d1830);
+  border-bottom:1px solid var(--line);padding:16px 18px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--gold),var(--gold2));
+  border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.logo-title{font-size:22px;font-weight:900;letter-spacing:-1px;
+  background:linear-gradient(90deg,var(--gold),var(--pink));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.logo-sub{font-size:11px;color:var(--muted);font-weight:700;margin-top:1px;}
+.header-right{display:flex;align-items:center;gap:8px;}
+.hbtn{background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:10px;
+  color:var(--text);font-size:12px;font-weight:700;padding:8px 14px;cursor:pointer;transition:.15s;}
+.hbtn:hover{background:rgba(255,255,255,.1);border-color:var(--gold);}
+.hbtn.loading{opacity:.5;cursor:not-allowed;}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;}
+.dot-ok{background:var(--green);box-shadow:0 0 6px var(--green);}
+.dot-err{background:var(--red);}
+.dot-load{background:var(--gold);box-shadow:0 0 6px var(--gold);}
+
+/* ── 레이아웃 ── */
+.wrap{max-width:1100px;margin:0 auto;padding:18px 14px 60px;}
+
+/* ── 카드 ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:18px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-title{font-size:13px;font-weight:900;color:var(--muted);letter-spacing:2px;
+  text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.card-title span{font-size:16px;}
+
+/* ── 최신 회차 정보 ── */
+.round-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.rg-box{background:var(--bg3);border:1px solid var(--line);border-radius:14px;padding:13px;}
+.rg-label{font-size:10px;font-weight:900;color:var(--muted);letter-spacing:1.5px;
+  text-transform:uppercase;margin-bottom:5px;}
+.rg-value{font-size:20px;font-weight:900;color:var(--text);}
+.rg-sub{font-size:11px;color:var(--muted);font-weight:700;margin-top:3px;}
+
+/* 등수 행 */
+.prize-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.prize-box{background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+  padding:12px;text-align:center;}
+.prize-rank{font-size:10px;font-weight:900;letter-spacing:1px;margin-bottom:5px;}
+.r1{color:var(--gold);}.r2{color:#c0c0c0;}.r3{color:#cd7f32;}
+.prize-cnt{font-size:13px;font-weight:900;color:var(--text);margin-bottom:3px;}
+.prize-amt{font-size:12px;font-weight:700;color:var(--green);}
+
+/* ── 당첨번호 표시 ── */
+.balls-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
+.ball{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:14px;font-weight:900;color:#fff;flex-shrink:0;}
+.ball-sm{width:28px;height:28px;font-size:11px;}
+.ball-xs{width:22px;height:22px;font-size:9px;}
+.b-y{background:linear-gradient(135deg,#f4c64b,#e0a800);}
+.b-s{background:linear-gradient(135deg,#7dc8ff,#4a9fd4);}
+.b-r{background:linear-gradient(135deg,#ff8ea2,#e05070);}
+.b-p{background:linear-gradient(135deg,#b4a0ff,#8060d0);}
+.b-g{background:linear-gradient(135deg,#7dd9ae,#4aac7a);}
+.bonus-sep{font-size:18px;color:var(--muted);font-weight:900;}
+
+/* ── 미니 패턴 격자 ── */
+.mini-grid-wrap{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:10px;}
+.mini-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;position:relative;}
+.mc{width:100%;aspect-ratio:1;border-radius:3px;background:rgba(255,255,255,.04);
+  display:flex;align-items:center;justify-content:center;font-size:7px;
+  font-weight:700;color:rgba(255,255,255,.15);}
+.mc.hit{color:#fff;font-size:8px;}
+.mc.hit.b-y{background:linear-gradient(135deg,#f4c64b,#e0a800);}
+.mc.hit.b-s{background:linear-gradient(135deg,#7dc8ff,#4a9fd4);}
+.mc.hit.b-r{background:linear-gradient(135deg,#ff8ea2,#e05070);}
+.mc.hit.b-p{background:linear-gradient(135deg,#b4a0ff,#8060d0);}
+.mc.hit.b-g{background:linear-gradient(135deg,#7dd9ae,#4aac7a);}
+.mini-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;}
+
+/* ── 분석 방법 설명 ── */
+.method-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.method-box{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:12px;}
+.method-title{font-size:11px;font-weight:900;color:var(--gold);margin-bottom:6px;}
+.method-desc{font-size:11px;color:var(--muted);line-height:1.7;}
+
+/* ── 건너뛰기 분석 섹션 ── */
+.skip-tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.skip-tab{padding:8px 16px;border-radius:999px;font-size:12px;font-weight:900;
+  border:1.5px solid var(--line);background:var(--bg2);color:var(--muted);cursor:pointer;transition:.15s;}
+.skip-tab:hover{border-color:var(--sub);color:var(--text);}
+.skip-tab.on{background:var(--card);border-color:var(--gold);color:var(--gold);}
+.skip-panel{display:none;}.skip-panel.show{display:block;}
+
+.skip-history{display:grid;gap:8px;margin-bottom:14px;}
+.sh-item{background:var(--bg3);border:1px solid var(--line);border-radius:12px;
+  padding:11px 13px;display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:10px;}
+.sh-left{display:flex;flex-direction:column;gap:4px;}
+.sh-round{font-size:13px;font-weight:900;color:var(--text);}
+.sh-date{font-size:10px;color:var(--muted);font-weight:700;}
+.sh-right{display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
+.sh-label{font-size:9px;font-weight:900;color:var(--muted);letter-spacing:1px;}
+.overlap-badge{background:rgba(0,230,118,.12);border:1px solid rgba(0,230,118,.25);
+  color:var(--green);font-size:10px;font-weight:900;padding:2px 8px;border-radius:999px;}
+
+/* ── 패턴 예측 TOP5 ── */
+.predict-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+.predict-card{background:var(--bg3);border:1px solid var(--line);border-radius:16px;
+  padding:14px;position:relative;transition:.15s;}
+.predict-card:hover{border-color:var(--line2);transform:translateY(-2px);}
+.pc-rank{position:absolute;top:-10px;left:50%;transform:translateX(-50%);
+  background:var(--card);border:1px solid var(--line);border-radius:999px;
+  font-size:11px;font-weight:900;padding:2px 10px;white-space:nowrap;}
+.r1-rank{color:var(--gold);border-color:rgba(255,215,0,.3);}
+.r2-rank{color:#c0c0c0;border-color:rgba(192,192,192,.3);}
+.r3-rank{color:#cd7f32;border-color:rgba(205,127,50,.3);}
+.r4-rank{color:var(--blue);border-color:rgba(68,138,255,.3);}
+.r5-rank{color:var(--purple);border-color:rgba(192,132,252,.3);}
+.pc-score{font-size:24px;font-weight:900;text-align:center;margin:18px 0 10px;}
+.pc-score-sub{font-size:10px;color:var(--muted);text-align:center;margin-bottom:12px;}
+.pc-based{font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.6;}
+.pc-balls{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:10px;}
+.pc-pattern{margin-top:8px;}
+.pc-pattern-title{font-size:9px;color:var(--muted);font-weight:700;margin-bottom:4px;letter-spacing:1px;}
+.confidence-bar{height:5px;border-radius:999px;background:var(--line);margin-bottom:6px;}
+.cb-fill{height:100%;border-radius:999px;}
+.cb-gold{background:linear-gradient(90deg,var(--gold2),var(--gold));}
+.cb-silver{background:linear-gradient(90deg,#999,#ddd);}
+.cb-bronze{background:linear-gradient(90deg,#cd7f32,#e8a87c);}
+.cb-blue{background:linear-gradient(90deg,#2060ff,var(--blue));}
+.cb-purple{background:linear-gradient(90deg,#8040d0,var(--purple));}
+
+/* ── 건너뛰기 히트맵 ── */
+.heatmap-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin:10px 0;}
+.hm-cell{background:var(--bg3);border-radius:6px;padding:5px 2px;text-align:center;}
+.hm-num{font-size:11px;font-weight:900;color:var(--text);}
+.hm-cnt{font-size:9px;color:var(--muted);}
+.hm-bar{height:3px;border-radius:2px;background:var(--pink);margin:2px auto 0;transition:.3s;}
+
+/* ── 회차별 미니 패턴 히스토리 ── */
+.round-history{display:grid;gap:8px;}
+.rh-row{display:flex;align-items:center;gap:12px;background:var(--bg3);
+  border:1px solid var(--line);border-radius:12px;padding:10px 13px;}
+.rh-info{flex-shrink:0;width:80px;}
+.rh-round{font-size:13px;font-weight:900;color:var(--text);}
+.rh-date{font-size:9px;color:var(--muted);}
+.rh-mini{flex:1;position:relative;}
+.rh-balls{display:flex;gap:4px;flex-wrap:wrap;flex:1;}
+
+/* ── 로딩/에러 ── */
+.loading-box{text-align:center;padding:50px 20px;color:var(--muted);}
+.spinner{display:inline-block;width:28px;height:28px;border:3px solid var(--line);
+  border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-box p{margin-top:14px;font-size:13px;font-weight:700;color:var(--sub);}
+.err-box{background:rgba(255,61,61,.08);border:1px solid rgba(255,61,61,.2);
+  border-radius:12px;padding:14px;font-size:13px;color:var(--red);font-weight:700;
+  text-align:center;margin:10px 0;}
+.info-tag{display:inline-block;padding:3px 9px;border-radius:999px;font-size:10px;
+  font-weight:900;margin:2px;}
+.tag-gold{background:rgba(255,215,0,.12);color:var(--gold);border:1px solid rgba(255,215,0,.25);}
+.tag-green{background:rgba(0,230,118,.1);color:var(--green);border:1px solid rgba(0,230,118,.2);}
+.tag-blue{background:rgba(68,138,255,.1);color:var(--blue);border:1px solid rgba(68,138,255,.2);}
+.tag-red{background:rgba(255,61,61,.1);color:var(--red);border:1px solid rgba(255,61,61,.2);}
+.tag-purple{background:rgba(192,132,252,.1);color:var(--purple);border:1px solid rgba(192,132,252,.2);}
+
+@media(max-width:760px){
+  .round-grid,.prize-row,.method-grid{grid-template-columns:1fr;}
+  .predict-grid{grid-template-columns:1fr 1fr;}
+  .logo-title{font-size:18px;}
+}
+@media(max-width:480px){
+  .predict-grid{grid-template-columns:1fr;}
+  .ball{width:32px;height:32px;font-size:12px;}
+}
+</style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">🎯</div>
+    <div>
+      <div class="logo-title">로또 패턴 예측기 PRO</div>
+      <div class="logo-sub">1회~현재 전체 패턴 학습 · 건너뛰기 분석 · TOP5 예측</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="statusBadge" style="font-size:11px;font-weight:700;color:var(--muted);">
+      <span class="status-dot dot-load"></span>로딩 중...
+    </span>
+    <button class="hbtn" id="refreshBtn" onclick="init()">↻ 새로고침</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ① 최신 회차 정보 -->
+  <div class="card" id="latestCard">
+    <div class="card-title"><span>🏆</span>최신 회차 당첨 정보</div>
+    <div class="loading-box"><div class="spinner"></div><p>데이터 로딩 중...</p></div>
+  </div>
+
+  <!-- ② 분석 방법 설명 -->
+  <div class="card">
+    <div class="card-title"><span>📖</span>분석 방법</div>
+    <div class="method-grid">
+      <div class="method-box">
+        <div class="method-title">🔢 1회차 건너뛰기</div>
+        <div class="method-desc">
+          매주 1회차씩 건너서 비교.<br>
+          예: 1085 → 1083 → 1081회<br>
+          짝수회/홀수회 패턴 추출.<br>
+          최근 10쌍 오버랩 번호 분석.
+        </div>
+      </div>
+      <div class="method-box">
+        <div class="method-title">🔢 2회차 건너뛰기</div>
+        <div class="method-desc">
+          2회차씩 건너서 비교.<br>
+          예: 1085 → 1082 → 1079회<br>
+          3주 간격 패턴 추출.<br>
+          최근 10쌍 공통 번호 분석.
+        </div>
+      </div>
+      <div class="method-box">
+        <div class="method-title">🔢 3회차 건너뛰기</div>
+        <div class="method-desc">
+          3회차씩 건너서 비교.<br>
+          예: 1085 → 1081 → 1077회<br>
+          한달 간격 패턴 추출.<br>
+          최근 10쌍 반복 번호 분석.
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.8;">
+      💡 <b style="color:var(--text);">패턴 유사도</b> = 비트마스크 겹침(50%) + 선연결 방향벡터(50%) 가중 합산<br>
+      💡 <b style="color:var(--text);">건너뛰기 분석</b> = 과거 동일 간격 회차에서 반복 출현한 번호의 빈도·가중치 계산<br>
+      💡 <b style="color:var(--text);">TOP5 선정</b> = 세 가지 분석 결과를 종합해 가중 빈도 상위 번호 6개씩 조합
+    </div>
+  </div>
+
+  <!-- ③ 건너뛰기 분석 -->
+  <div class="card">
+    <div class="card-title"><span>⏭️</span>건너뛰기 패턴 분석 (최근 10회차 기준)</div>
+    <div class="skip-tabs">
+      <div class="skip-tab on" data-skip="1" onclick="switchSkip(1,this)">🔢 1회차 건너뛰기</div>
+      <div class="skip-tab"   data-skip="2" onclick="switchSkip(2,this)">🔢 2회차 건너뛰기</div>
+      <div class="skip-tab"   data-skip="3" onclick="switchSkip(3,this)">🔢 3회차 건너뛰기</div>
+    </div>
+    <div id="skipArea">
+      <div class="loading-box"><div class="spinner"></div><p>데이터 로딩 후 분석됩니다...</p></div>
+    </div>
+  </div>
+
+  <!-- ④ 히트맵: 건너뛰기별 번호 빈도 -->
+  <div class="card">
+    <div class="card-title"><span>🔥</span>번호별 건너뛰기 출현 빈도 히트맵</div>
+    <div id="heatmapArea">
+      <div class="loading-box"><div class="spinner"></div><p>로딩 중...</p></div>
+    </div>
+  </div>
+
+  <!-- ⑤ 유력 패턴 TOP 5 -->
+  <div class="card">
+    <div class="card-title"><span>🎯</span>다음 회차 유력 패턴 TOP 5</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7;">
+      1회~현재 전체 패턴 학습 결과를 토대로,
+      <b style="color:var(--text);">현재 회차 패턴과 가장 유사한 과거 패턴</b> 다음에 나온 번호들을
+      건너뛰기 가중치와 합산해 최종 TOP 5 예측 번호 세트를 제시합니다.
+    </div>
+    <div id="predictArea">
+      <div class="loading-box"><div class="spinner"></div><p>패턴 학습 중...</p></div>
+    </div>
+  </div>
+
+  <!-- ⑥ 역대 최다 출현 패턴 TOP3 -->
+  <div class="card">
+    <div class="card-title"><span>👑</span>역대 최다 출현 패턴 TOP 3 <span style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:1px;margin-left:6px;">매주 자동 업데이트</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7;">
+      1회부터 현재 회차까지 전체 당첨번호의 <b style="color:var(--text);">격자 패턴 유형</b>을 분석해
+      가장 많이 반복된 패턴 TOP 3를 추출합니다.<br>
+      패턴 분류 기준: <b style="color:var(--gold);">구간 분포(상/중하)</b> + <b style="color:var(--gold);">홀짝 비율</b> + <b style="color:var(--gold);">합계 구간</b> + <b style="color:var(--gold);">AC값</b>
+    </div>
+    <div id="topPatternArea">
+      <div class="loading-box"><div class="spinner"></div><p>전체 패턴 분석 중...</p></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// 데이터
+// ═══════════════════════════════════════════════════════════════
+const DATA_URL = "lotto_data.json";
+let DB = [];          // 전체 회차 데이터 (최신순)
+let curSkip = 1;      // 현재 선택 건너뛰기
+let SKIP_FREQ = {1:{},2:{},3:{}};  // 건너뛰기별 번호 빈도
+
+// ── 유틸 ──────────────────────────────────────────────────────
+const bCls = n => n<=10?"b-y":n<=20?"b-s":n<=30?"b-r":n<=40?"b-p":"b-g";
+const bHTML = (nums,sz="") =>
+  nums.map(n=>`<div class="ball ${bCls(n)} ${sz}">${n}</div>`).join("");
+const fmt = v => typeof v==="number"&&!isNaN(v) ? v.toLocaleString("ko-KR")+"원" : "-";
+const fmtN = v => typeof v==="number"&&!isNaN(v) ? v.toLocaleString("ko-KR")+"명" : "-";
+function addDays(d,n){const dt=new Date(d+"T00:00:00");dt.setDate(dt.getDate()+n);return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;}
+
+function setStatus(type,text){
+  const el=document.getElementById("statusBadge");
+  const cls=type==="ok"?"dot-ok":type==="err"?"dot-err":"dot-load";
+  el.innerHTML=`<span class="status-dot ${cls}"></span>${text}`;
+}
+
+// ── 데이터 로드 ───────────────────────────────────────────────
+async function loadData(){
+  setStatus("load","데이터 로딩 중...");
+
+  // lotto_data.json 만 사용 (GitHub Actions가 생성)
+  // 없으면 안내 메시지만 표시 — 무한로딩 없음
+  try{
+    const r=await fetch(DATA_URL+"?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok) throw new Error("lotto_data.json 없음 (HTTP "+r.status+")");
+    const txt=await r.text();
+    if(!txt||txt.trim().startsWith("<"))
+      throw new Error("lotto_data.json 없음 — HTML 반환됨");
+    const json=JSON.parse(txt);
+    if(!json.draws||!json.draws.length)
+      throw new Error("draws 데이터 비어있음");
+    DB=json.draws.filter(d=>d.numbers&&d.numbers.length===6).sort((a,b)=>b.round-a.round);
+    setStatus("ok",`${DB.length}회차 로드 완료 · ${json.updated||""}`);
+  }catch(e){
+    throw new Error(e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ① 최신 회차 렌더
+// ═══════════════════════════════════════════════════════════════
+function renderLatest(){
+  const d=DB[0], el=document.getElementById("latestCard");
+  const sorted=[...d.numbers].sort((a,b)=>a-b);
+  const nextDate=addDays(d.date,7);
+
+  el.innerHTML=`
+  <div class="card-title"><span>🏆</span>최신 회차 당첨 정보</div>
+  <div class="round-grid">
+    <div class="rg-box">
+      <div class="rg-label">회차</div>
+      <div class="rg-value">${d.round}회</div>
+      <div class="rg-sub">📅 ${d.date}</div>
+    </div>
+    <div class="rg-box">
+      <div class="rg-label">다음 추첨일</div>
+      <div class="rg-value" style="font-size:16px;">${nextDate}</div>
+      <div class="rg-sub">매주 토요일 추첨</div>
+    </div>
+    <div class="rg-box">
+      <div class="rg-label">총 회차</div>
+      <div class="rg-value">${DB.length}회</div>
+      <div class="rg-sub">1회부터 누적</div>
+    </div>
+  </div>
+
+  <div style="font-size:11px;font-weight:900;color:var(--muted);letter-spacing:1.5px;margin-bottom:8px;">당첨번호</div>
+  <div class="balls-row">
+    ${bHTML(sorted)}
+    <div class="bonus-sep">+</div>
+    <div class="ball ${bCls(d.bonus)}" style="opacity:.8;border:2px dashed rgba(255,255,255,.3);">${d.bonus}</div>
+  </div>
+
+  <!-- 미니 패턴 -->
+  <div style="margin-bottom:12px;">
+    <div style="font-size:11px;font-weight:900;color:var(--muted);letter-spacing:1.5px;margin-bottom:6px;">로또 용지 패턴</div>
+    <div class="mini-grid-wrap" style="max-width:360px;">
+      ${buildMiniGrid(sorted,"latest")}
+    </div>
+  </div>
+
+  <!-- 등수별 당첨 정보 -->
+  <div style="font-size:11px;font-weight:900;color:var(--muted);letter-spacing:1.5px;margin-bottom:8px;">등수별 당첨 현황</div>
+  <div class="prize-row">
+    <div class="prize-box">
+      <div class="prize-rank r1">🥇 1등</div>
+      <div class="prize-cnt">${fmtN(d.w1)}</div>
+      <div class="prize-amt">${fmt(d.a1)}</div>
+    </div>
+    <div class="prize-box">
+      <div class="prize-rank r2">🥈 2등</div>
+      <div class="prize-cnt">${fmtN(d.w2)}</div>
+      <div class="prize-amt">${fmt(d.a2)}</div>
+    </div>
+    <div class="prize-box">
+      <div class="prize-rank r3">🥉 3등</div>
+      <div class="prize-cnt">${fmtN(d.w3)}</div>
+      <div class="prize-amt">${fmt(d.a3)}</div>
+    </div>
+  </div>`;
+
+  // SVG 선 그리기
+  setTimeout(()=>drawSVG("latest",sorted),150);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 미니 격자 생성
+// ═══════════════════════════════════════════════════════════════
+function buildMiniGrid(nums, id){
+  const hit=new Set(nums);
+  let html=`<div class="mini-grid" id="mg_${id}">`;
+  for(let n=1;n<=45;n++){
+    const cls=hit.has(n)?`hit ${bCls(n)}`:"";
+    html+=`<div class="mc ${cls}" id="mc_${id}_${n}">${n}</div>`;
+  }
+  html+=`<svg class="mini-svg" id="svg_${id}" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>`;
+  html+=`</div>`;
+  return html;
+}
+
+function drawSVG(id, nums){
+  const svg=document.getElementById(`svg_${id}`);
+  const grid=document.getElementById(`mg_${id}`);
+  if(!svg||!grid) return;
+  const gr=grid.getBoundingClientRect();
+  if(gr.width===0) return;
+  const sorted=[...nums].sort((a,b)=>a-b);
+  const pts=sorted.map(n=>{
+    const c=document.getElementById(`mc_${id}_${n}`);
+    if(!c) return null;
+    const cr=c.getBoundingClientRect();
+    return{x:((cr.left-gr.left+cr.width/2)/gr.width)*100,
+           y:((cr.top-gr.top+cr.height/2)/gr.height)*100};
+  }).filter(Boolean);
+  if(pts.length<2) return;
+  let d=`M${pts[0].x},${pts[0].y}`;
+  for(let i=1;i<pts.length;i++) d+=` L${pts[i].x},${pts[i].y}`;
+  svg.innerHTML=
+    `<path d="${d}" fill="none" stroke="#ffd700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+     ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="1.5" fill="#ffd700" opacity="0.9"/>`).join("")}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ② 건너뛰기 분석
+// ═══════════════════════════════════════════════════════════════
+function analyzeSkip(skip){
+  // 최근 10쌍: 현재 → skip 간격으로 비교
+  const pairs=[];
+  const freqMap={};
+  for(let i=1;i<=45;i++) freqMap[i]=0;
+
+  for(let i=0;i<10&&i<DB.length;i++){
+    const cur=DB[i];
+    const prev=DB[i+skip];
+    if(!prev) break;
+    const overlapNums=cur.numbers.filter(n=>prev.numbers.includes(n));
+    pairs.push({cur,prev,skip,overlapNums});
+    // 건너뛰기 이후 나온 번호 빈도 (cur의 번호)
+    cur.numbers.forEach(n=>freqMap[n]++);
+  }
+
+  // 전체 역사에서 skip 간격 번호 빈도
+  const allFreq={};for(let i=1;i<=45;i++) allFreq[i]=0;
+  for(let i=0;i<DB.length-skip;i++){
+    const A=new Set(DB[i].numbers);
+    DB[i+skip].numbers.forEach(n=>{if(A.has(n)) allFreq[n]++;});
+  }
+
+  SKIP_FREQ[skip]=allFreq;
+  return{pairs, freqMap, allFreq};
+}
+
+function renderSkip(skip){
+  const{pairs,freqMap,allFreq}=analyzeSkip(skip);
+  const el=document.getElementById("skipArea");
+  const skipNames=["","1회차","2회차","3회차"];
+
+  let html=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7;">
+    <b style="color:var(--text);">${skipNames[skip]} 건너뛰기</b> — 최근 10회차 기준<br>
+    현재 회차에서 ${skip}회 건너 비교했을 때 <b style="color:var(--gold);">반복 출현한 번호</b>를 분석합니다.
+  </div>`;
+
+  // 쌍별 표시
+  html+=`<div class="skip-history">`;
+  pairs.forEach(({cur,prev,overlapNums})=>{
+    const cSorted=[...cur.numbers].sort((a,b)=>a-b);
+    const pSorted=[...prev.numbers].sort((a,b)=>a-b);
+    html+=`
+    <div class="sh-item">
+      <div class="sh-left">
+        <div class="sh-round">${cur.round}회 <span style="color:var(--muted);font-size:10px;">(기준)</span></div>
+        <div class="sh-date">${cur.date}</div>
+        <div class="balls-row" style="gap:4px;margin-top:4px;">${bHTML(cSorted,"ball-sm")}</div>
+      </div>
+      <div style="color:var(--muted);font-size:18px;font-weight:900;">↕</div>
+      <div class="sh-left">
+        <div class="sh-round">${prev.round}회 <span style="color:var(--muted);font-size:10px;">(${skip}회 전)</span></div>
+        <div class="sh-date">${prev.date}</div>
+        <div class="balls-row" style="gap:4px;margin-top:4px;">${bHTML(pSorted,"ball-sm")}</div>
+      </div>
+      <div class="sh-right">
+        <div class="sh-label">겹친 번호 ${overlapNums.length}개</div>
+        <div class="balls-row" style="gap:3px;">
+          ${overlapNums.length ? bHTML([...overlapNums].sort((a,b)=>a-b),"ball-xs") :
+            `<span style="font-size:10px;color:var(--muted);">없음</span>`}
+        </div>
+        ${overlapNums.length>=2 ? `<span class="overlap-badge">🔥 ${overlapNums.length}개 반복</span>`:""}
+      </div>
+    </div>`;
+  });
+  html+=`</div>`;
+
+  // 빈도 상위 번호
+  const topFreq=Object.entries(allFreq).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  html+=`<div style="margin-top:14px;">
+    <div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:8px;letter-spacing:1px;">
+      🏅 전체 역사 기준 ${skipNames[skip]} 건너뛰기 겹침 번호 TOP 10
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      ${topFreq.map(([n,c],i)=>`
+      <div style="background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-align:center;min-width:60px;">
+        <div class="ball ball-sm ${bCls(Number(n))}" style="margin:0 auto 4px;">${n}</div>
+        <div style="font-size:9px;color:var(--muted);">${c}회 겹침</div>
+        ${i<3?`<span class="info-tag tag-gold">TOP${i+1}</span>`:""}
+      </div>`).join("")}
+    </div>
+  </div>`;
+
+  el.innerHTML=html;
+}
+
+function switchSkip(skip,el){
+  curSkip=skip;
+  document.querySelectorAll(".skip-tab").forEach(t=>t.classList.remove("on"));
+  el.classList.add("on");
+  if(DB.length) renderSkip(skip);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ③ 히트맵
+// ═══════════════════════════════════════════════════════════════
+function renderHeatmap(){
+  const el=document.getElementById("heatmapArea");
+  // 세 건너뛰기 합산 빈도
+  const combined={};
+  for(let n=1;n<=45;n++) combined[n]=0;
+  [1,2,3].forEach(skip=>{
+    const freq=SKIP_FREQ[skip]||{};
+    for(let n=1;n<=45;n++) combined[n]+=(freq[n]||0);
+  });
+  const maxVal=Math.max(...Object.values(combined));
+
+  let html=`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+    3가지 건너뛰기 분석 겹침 횟수 합산 — 높을수록 다음 회차 출현 유력
+  </div>
+  <div class="heatmap-grid">`;
+  for(let n=1;n<=45;n++){
+    const v=combined[n]||0;
+    const pct=maxVal>0?Math.round(v/maxVal*100):0;
+    html+=`
+    <div class="hm-cell">
+      <div class="ball ball-xs ${bCls(n)}" style="margin:0 auto 3px;">${n}</div>
+      <div class="hm-cnt">${v}</div>
+      <div class="hm-bar" style="width:${pct}%;"></div>
+    </div>`;
+  }
+  html+=`</div>`;
+
+  // 상위 6개 강조
+  const top6=Object.entries(combined).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([n])=>Number(n)).sort((a,b)=>a-b);
+  html+=`<div style="margin-top:12px;background:var(--bg3);border-radius:12px;padding:12px;">
+    <div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:8px;">
+      ⭐ 건너뛰기 종합 유력 번호 6개
+    </div>
+    <div class="balls-row">${bHTML(top6)}</div>
+  </div>`;
+  el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ④ 패턴 유사도 기반 TOP5 예측
+// ═══════════════════════════════════════════════════════════════
+function numsToMask(nums){
+  const s=new Set(nums),b=[];
+  for(let n=1;n<=45;n++) b.push(s.has(n)?1:0);
+  return b;
+}
+function maskSim(a,b){
+  let same=0,tot=0;
+  for(let i=0;i<45;i++){if(a[i]||b[i])tot++;if(a[i]&&b[i])same++;}
+  return tot?same/tot:0;
+}
+function lineVec(nums){
+  const s=[...nums].sort((a,b)=>a-b);
+  const pos=s.map(n=>({r:Math.floor((n-1)/9),c:(n-1)%9}));
+  const vecs=[];
+  for(let i=0;i<pos.length-1;i++) vecs.push({dr:pos[i+1].r-pos[i].r,dc:pos[i+1].c-pos[i].c});
+  const avgDr=vecs.reduce((s,v)=>s+v.dr,0)/vecs.length;
+  const avgDc=vecs.reduce((s,v)=>s+v.dc,0)/vecs.length;
+  const dir=vecs.map(v=>v.dr>0?1:v.dr<0?-1:0).join("");
+  return{avgDr,avgDc,dir,span:s[5]-s[0]};
+}
+function lineVecSim(a,b){
+  let sc=0;
+  const ml=Math.min(a.dir.length,b.dir.length);
+  let dm=0;for(let i=0;i<ml;i++) if(a.dir[i]===b.dir[i]) dm++;
+  sc+=ml?dm/ml*0.4:0;
+  sc+=Math.max(0,(1-Math.abs(a.avgDr-b.avgDr)/4))*0.3;
+  sc+=Math.max(0,(1-Math.abs(a.avgDc-b.avgDc)/4))*0.3;
+  return sc;
+}
+
+function buildTop5(){
+  const el=document.getElementById("predictArea");
+  if(DB.length<20){el.innerHTML=`<div class="err-box">데이터가 부족합니다 (최소 20회차 필요).</div>`;return;}
+
+  const cur=DB[0];
+  const curMask=numsToMask(cur.numbers);
+  const curVec=lineVec(cur.numbers);
+
+  // 건너뛰기 종합 빈도 (가중치용)
+  const skipCombined={};
+  for(let n=1;n<=45;n++) skipCombined[n]=0;
+  [1,2,3].forEach(skip=>{
+    const freq=SKIP_FREQ[skip]||{};
+    for(let n=1;n<=45;n++) skipCombined[n]+=(freq[n]||0)*(4-skip);
+  });
+  const maxSkip=Math.max(...Object.values(skipCombined))||1;
+
+  // 전체 DB에서 유사 패턴 찾기
+  const cands=[];
+  for(let i=1;i<DB.length-1;i++){
+    const h=DB[i];
+    const hMask=numsToMask(h.numbers);
+    const hVec=lineVec(h.numbers);
+    const mSim=maskSim(curMask,hMask);
+    const lSim=lineVecSim(curVec,hVec);
+    const total=mSim*0.5+lSim*0.5;
+    if(total>0.08){
+      const nxt=DB[i-1]; // 다음 회차 (최신순 정렬이므로 i-1)
+      cands.push({histR:h,nextR:nxt,sim:total,mSim,lSim});
+    }
+  }
+  cands.sort((a,b)=>b.sim-a.sim);
+
+  // 후보 중 번호 가중 빈도 계산
+  const freq={};for(let n=1;n<=45;n++) freq[n]=0;
+  cands.slice(0,30).forEach((c,ri)=>{
+    const w=c.sim*(1-ri/30);
+    c.nextR.numbers.forEach(n=>{
+      const skipBonus=(skipCombined[n]/maxSkip)*0.3;
+      freq[n]+=w+skipBonus;
+    });
+  });
+
+  // 번호 정렬
+  const sorted=Object.entries(freq).sort((a,b)=>b[1]-a[1]);
+
+  // TOP5 세트 생성 (다양하게: 각각 살짝 다른 조합)
+  const rankInfo=[
+    {emoji:"🥇",cls:"r1-rank",cbcls:"cb-gold",label:"1위"},
+    {emoji:"🥈",cls:"r2-rank",cbcls:"cb-silver",label:"2위"},
+    {emoji:"🥉",cls:"r3-rank",cbcls:"cb-bronze",label:"3위"},
+    {emoji:"4️⃣",cls:"r4-rank",cbcls:"cb-blue",label:"4위"},
+    {emoji:"5️⃣",cls:"r5-rank",cbcls:"cb-purple",label:"5위"},
+  ];
+
+  const top5Sets=[];
+  // 1위: 순수 가중빈도 상위 6개
+  top5Sets.push({
+    nums:sorted.slice(0,6).map(([n])=>Number(n)).sort((a,b)=>a-b),
+    score:(sorted[0]?.[1]||0),
+    basis:"패턴 유사도 + 건너뛰기 종합 가중 빈도",
+    ref:cands[0],
+    tags:["종합 1위","패턴유사","건너뛰기"],
+  });
+  // 2위: 유사도 TOP 20 중 1회차 건너뛰기 편향
+  {const f={};for(let n=1;n<=45;n++) f[n]=0;
+  cands.slice(0,20).forEach(c=>{c.nextR.numbers.forEach(n=>{f[n]+=c.sim;});});
+  const s1=Object.entries(SKIP_FREQ[1]||{}).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n])=>Number(n));
+  const combined=Object.entries(f).sort((a,b)=>b[1]-a[1]).map(([n])=>Number(n));
+  const merged=[...new Set([...s1,...combined])].slice(0,6).sort((a,b)=>a-b);
+  top5Sets.push({nums:merged,score:(sorted[1]?.[1]||0)*0.95,basis:"1회차 건너뛰기 편향",ref:cands[1],tags:["1회건너뛰기","반복출현"]});}
+  // 3위: 2회차 건너뛰기 편향
+  {const s2=Object.entries(SKIP_FREQ[2]||{}).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n])=>Number(n));
+  const combined=sorted.slice(0,10).map(([n])=>Number(n));
+  const merged=[...new Set([...s2,...combined])].slice(0,6).sort((a,b)=>a-b);
+  top5Sets.push({nums:merged,score:(sorted[2]?.[1]||0)*0.9,basis:"2회차 건너뛰기 편향",ref:cands[2],tags:["2회건너뛰기","3주패턴"]});}
+  // 4위: 3회차 건너뛰기 편향
+  {const s3=Object.entries(SKIP_FREQ[3]||{}).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n])=>Number(n));
+  const combined=sorted.slice(2,12).map(([n])=>Number(n));
+  const merged=[...new Set([...s3,...combined])].slice(0,6).sort((a,b)=>a-b);
+  top5Sets.push({nums:merged,score:(sorted[3]?.[1]||0)*0.85,basis:"3회차 건너뛰기 편향",ref:cands[3],tags:["3회건너뛰기","한달패턴"]});}
+  // 5위: 유사도 최상위 다음 회차 그대로
+  if(cands[0]){
+    const nextNums=[...cands[0].nextR.numbers].sort((a,b)=>a-b);
+    top5Sets.push({nums:nextNums,score:(sorted[4]?.[1]||0)*0.8,basis:`${cands[0].histR.round}회와 유사 → ${cands[0].nextR.round}회 번호`,ref:cands[0],tags:["직접참조","최고유사도"]});
+  }
+
+  const maxScore=top5Sets[0]?.score||1;
+  let html=`<div class="predict-grid">`;
+  top5Sets.forEach((set,i)=>{
+    const info=rankInfo[i];
+    const pct=Math.round((set.score/maxScore)*100);
+    const refTxt=set.ref ? `유사 ${set.ref.histR.round}회 → 다음 ${set.ref.nextR.round}회` : "-";
+    html+=`
+    <div class="predict-card">
+      <div class="pc-rank ${info.cls}">${info.emoji} ${info.label}</div>
+      <div class="pc-score" style="color:${i===0?"var(--gold)":i===1?"#c0c0c0":i===2?"#cd7f32":i===3?"var(--blue)":"var(--purple)"};">
+        ${pct}점
+      </div>
+      <div class="pc-score-sub">신뢰도</div>
+      <div class="confidence-bar">
+        <div class="${info.cbcls} cb-fill" style="width:${pct}%;"></div>
+      </div>
+      <div class="pc-balls">${bHTML(set.nums)}</div>
+      <div class="pc-based">${set.basis}<br>
+        <span style="color:var(--muted);font-size:9px;">📌 ${refTxt}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;">
+        ${set.tags.map(t=>`<span class="info-tag tag-${i===0?"gold":i===1?"green":i===2?"blue":i===3?"red":"purple"}">${t}</span>`).join("")}
+      </div>
+      <div class="pc-pattern">
+        <div class="pc-pattern-title">미니 패턴</div>
+        ${buildMiniGrid(set.nums,"p"+i)}
+      </div>
+    </div>`;
+  });
+  html+=`</div>
+  <div style="margin-top:14px;background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:12px;">
+    <div style="font-size:10px;color:var(--muted);line-height:1.8;">
+      ⚠️ 로또는 완전한 무작위 추첨입니다. 위 예측은 통계적 패턴 분석이며 당첨을 보장하지 않습니다.<br>
+      📊 분석 기반: ${DB.length}회차 전체 데이터 / 유사 패턴 후보 ${Math.min(cands.length,30)}개 / 3종 건너뛰기 가중합산
+    </div>
+  </div>`;
+  el.innerHTML=html;
+  // 미니패턴 SVG 그리기
+  setTimeout(()=>top5Sets.forEach((set,i)=>drawSVG("p"+i,set.nums)),200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ⑥ 역대 최다 출현 패턴 TOP3
+// ═══════════════════════════════════════════════════════════════
+
+// 패턴 시그니처: 구간분포 + 홀짝비율 + 합계구간 + AC값구간
+function calcAC(nums){
+  const s=[...nums].sort((a,b)=>a-b);
+  const d=new Set();
+  for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) d.add(s[j]-s[i]);
+  return d.size-5;
+}
+function getPatternSig(nums){
+  const s=[...nums].sort((a,b)=>a-b);
+  const sum=s.reduce((a,b)=>a+b,0);
+  const odd=s.filter(n=>n%2).length;
+  const low=s.filter(n=>n<=15).length;
+  const mid=s.filter(n=>n>=16&&n<=30).length;
+  const high=s.filter(n=>n>=31).length;
+  const ac=calcAC(s);
+  const sumGrp=sum<100?"S":sum<130?"M":sum<160?"H":"VH";
+  const acGrp=ac<=4?"Lo":ac<=7?"Mid":"Hi";
+  return `L${low}M${mid}H${high}_O${odd}_${sumGrp}_AC${acGrp}`;
+}
+
+// 패턴 시그니처를 읽기 쉬운 설명으로
+function sigToDesc(sig){
+  const m=sig.match(/L(\d)M(\d)H(\d)_O(\d)_([A-Z]+)_AC([A-Za-z]+)/);
+  if(!m) return sig;
+  const[,l,mi,h,odd,sumG,acG]=m;
+  const even=6-Number(odd);
+  const sumTxt=sumG==="S"?"합계 낮음(~99)":sumG==="M"?"합계 보통(100~129)":sumG==="H"?"합계 높음(130~159)":"합계 매우높음(160+)";
+  const acTxt=acG==="Lo"?"AC 낮음(~4)":acG==="Mid"?"AC 보통(5~7)":"AC 높음(8+)";
+  return `1~15구간 ${l}개 · 16~30구간 ${mi}개 · 31~45구간 ${h}개
+홀수 ${odd}개 · 짝수 ${even}개 / ${sumTxt} / ${acTxt}`;
+}
+
+function renderTopPatterns(){
+  const el=document.getElementById("topPatternArea");
+  if(!DB.length){ el.innerHTML=`<div class="err-box">데이터 없음</div>`; return; }
+
+  // 전체 회차 패턴 시그니처 집계
+  const sigMap={};
+  DB.forEach(d=>{
+    const sig=getPatternSig(d.numbers);
+    if(!sigMap[sig]) sigMap[sig]={count:0,rounds:[],exNums:null,exDate:null};
+    sigMap[sig].count++;
+    sigMap[sig].rounds.push(d.round);
+    if(!sigMap[sig].exNums){ sigMap[sig].exNums=d.numbers; sigMap[sig].exDate=d.date; sigMap[sig].exRound=d.round; }
+  });
+
+  // 최다 출현 순 정렬
+  const sorted=Object.entries(sigMap).sort((a,b)=>b[1].count-a[1].count);
+  const top3=sorted.slice(0,3);
+  const total=DB.length;
+  const rankInfo=[
+    {emoji:"🥇",cls:"r1-rank",cbcls:"cb-gold",border:"rgba(255,215,0,.3)",color:"var(--gold)"},
+    {emoji:"🥈",cls:"r2-rank",cbcls:"cb-silver",border:"rgba(192,192,192,.3)",color:"#c0c0c0"},
+    {emoji:"🥉",cls:"r3-rank",cbcls:"cb-bronze",border:"rgba(205,127,50,.3)",color:"#cd7f32"},
+  ];
+
+  let html=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">`;
+  top3.forEach(([sig,data],i)=>{
+    const info=rankInfo[i];
+    const pct=(data.count/total*100).toFixed(1);
+    const exSorted=[...data.exNums].sort((a,b)=>a-b);
+    const desc=sigToDesc(sig);
+    const recentRounds=data.rounds.slice(0,5).join(", ");
+
+    html+=`
+    <div class="predict-card" style="border-color:${info.border};padding-top:22px;">
+      <div class="pc-rank ${info.cls}">${info.emoji} ${i+1}위</div>
+      <div style="text-align:center;margin-bottom:10px;">
+        <div style="font-size:28px;font-weight:900;color:${info.color};">${data.count}회</div>
+        <div style="font-size:11px;color:var(--muted);">전체 ${total}회차 중 ${pct}%</div>
+      </div>
+      <div class="confidence-bar" style="margin-bottom:12px;">
+        <div class="${info.cbcls} cb-fill" style="width:${Math.min(100,pct*3)}%;"></div>
+      </div>
+      <div style="background:var(--bg2);border-radius:10px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:9px;font-weight:900;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">패턴 특징</div>
+        <div style="font-size:11px;color:var(--text);line-height:1.9;white-space:pre-line;">${desc}</div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:9px;font-weight:900;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">대표 예시 (${data.exRound}회 · ${data.exDate})</div>
+        <div class="balls-row" style="justify-content:center;">${bHTML(exSorted,"ball-sm")}</div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:9px;font-weight:900;color:var(--muted);letter-spacing:1px;margin-bottom:5px;">미니 패턴</div>
+        <div class="mini-grid-wrap" style="padding:6px;">${buildMiniGrid(exSorted,"tp"+i)}</div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.6;">
+        최근 출현 회차:<br>
+        <b style="color:var(--sub);">${recentRounds}${data.rounds.length>5?" 외 "+( data.rounds.length-5)+"회":""}회</b>
+      </div>
+    </div>`;
+  });
+  html+=`</div>`;
+
+  // 패턴 분포 요약 바
+  html+=`<div style="margin-top:18px;background:var(--bg3);border:1px solid var(--line);border-radius:14px;padding:14px;">
+    <div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;letter-spacing:1px;">
+      📊 전체 패턴 유형 분포 (상위 10개)
+    </div>
+    <div style="display:grid;gap:6px;">
+      ${sorted.slice(0,10).map(([sig,data],i)=>{
+        const pct=(data.count/total*100).toFixed(1);
+        const d=sigToDesc(sig).split("
+")[0];
+        return `
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:24px;font-size:11px;font-weight:900;color:var(--muted);flex-shrink:0;">${i+1}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:10px;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d}</div>
+            <div style="height:4px;border-radius:2px;background:var(--line);margin-top:3px;overflow:hidden;">
+              <div style="height:100%;width:${Math.min(100,pct*3)}%;background:${i===0?"linear-gradient(90deg,var(--gold2),var(--gold))":i===1?"linear-gradient(90deg,#999,#ddd)":i===2?"linear-gradient(90deg,#cd7f32,#e8a87c)":"linear-gradient(90deg,var(--blue),#82b1ff)"};border-radius:2px;"></div>
+            </div>
+          </div>
+          <div style="font-size:11px;font-weight:900;color:var(--sub);flex-shrink:0;">${data.count}회 (${pct}%)</div>
+        </div>`;
+      }).join("")}
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.8;">
+    📌 분석 기반: 1회~${DB[0].round}회 총 ${total}회차 전체 패턴 분류<br>
+    💡 이 패턴이 다음 회차에도 반복될 가능성이 통계적으로 높습니다.
+  </div>`;
+
+  el.innerHTML=html;
+  setTimeout(()=>top3.forEach(([,data],i)=>{
+    const exSorted=[...data.exNums].sort((a,b)=>a-b);
+    drawSVG("tp"+i,exSorted);
+  }),200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 메인
+// ═══════════════════════════════════════════════════════════════
+async function init(){
+  const btn=document.getElementById("refreshBtn");
+  btn.classList.add("loading");btn.disabled=true;
+
+  // 로딩 상태 초기화
+  document.getElementById("latestCard").innerHTML=
+    `<div class="card-title"><span>🏆</span>최신 회차 당첨 정보</div>
+     <div class="loading-box"><div class="spinner"></div><p>데이터 로딩 중...</p></div>`;
+  document.getElementById("skipArea").innerHTML=
+    `<div class="loading-box"><div class="spinner"></div><p>분석 중...</p></div>`;
+  document.getElementById("heatmapArea").innerHTML=
+    `<div class="loading-box"><div class="spinner"></div><p>분석 중...</p></div>`;
+  document.getElementById("predictArea").innerHTML=
+    `<div class="loading-box"><div class="spinner"></div><p>패턴 학습 중...</p></div>`;
+  document.getElementById("topPatternArea").innerHTML=
+    `<div class="loading-box"><div class="spinner"></div><p>전체 패턴 분석 중...</p></div>`;
+
+  try{
+    await loadData();
+    renderLatest();
+    // 건너뛰기 3종 모두 사전 계산
+    analyzeSkip(1);analyzeSkip(2);analyzeSkip(3);
+    renderSkip(curSkip);
+    renderHeatmap();
+    buildTop5();
+    renderTopPatterns();
+  }catch(err){
+    setStatus("err","데이터 로드 실패");
+    document.getElementById("latestCard").innerHTML=
+      `<div class="card-title"><span>🏆</span>최신 회차 당첨 정보</div>
+       <div class="err-box" style="text-align:left;line-height:2;">
+         ❌ <b>lotto_data.json 없음</b><br><br>
+         <b>아래 순서대로 해주세요:</b><br>
+         1️⃣ 저장소에 <b>fetch_lotto.py</b> 있는지 확인<br>
+         2️⃣ 저장소에 <b>.github/workflows/update_lotto.yml</b> 있는지 확인<br>
+         3️⃣ <b>Actions 탭</b> → 로또 데이터 자동 업데이트 → <b>Run workflow</b><br>
+         4️⃣ ✅ 완료 후 이 페이지 <b>새로고침</b><br><br>
+         <span style="font-size:10px;color:var(--muted);">오류: ${err.message}</span>
+       </div>`;
+  }finally{
+    btn.classList.remove("loading");btn.disabled=false;
+  }
+}
+init();
+</script>
+</body>
+</html>
