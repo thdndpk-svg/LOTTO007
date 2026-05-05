@@ -2,18 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-로또 데이터 자동 수집기 - 멀티 소스 안정형
+로또 데이터 자동 수집기 - 안전 검증형
 
-우선순위:
-1) lottotapa_all      : 로또타파 전체 회차 페이지
-2) dhlottery          : 동행복권 공식 JSON
-3) lottotapa_single   : 로또타파 개별 회차 페이지
-4) existing cache     : 기존 lotto_data.json 유지
-
-목표:
-- 한 서버가 막혀도 다음 서버로 자동 전환
-- GitHub Actions에서 timeout이 나도 앱 데이터는 최대한 유지
-- lotto_data.json 자동 생성/갱신
+핵심:
+- 회차별 개별 페이지 우선 사용
+- 동행복권 공식 JSON 보조 사용
+- 잘못 파싱된 반복 번호 자동 차단
+- 기존 lotto_data.json이 깨졌어도 clean rebuild 가능
 """
 
 import html
@@ -31,13 +26,15 @@ KST = timezone(timedelta(hours=9))
 FIRST_DRAW_DATE = date(2002, 12, 7)
 
 LOTTO_HISTORY_LIMIT = int(os.getenv("LOTTO_HISTORY_LIMIT", "120"))
-DHL_TIMEOUT = float(os.getenv("DHL_TIMEOUT", "3"))
 PAGE_TIMEOUT = float(os.getenv("PAGE_TIMEOUT", "10"))
+DHL_TIMEOUT = float(os.getenv("DHL_TIMEOUT", "4"))
+CLEAN_REBUILD = os.getenv("LOTTO_CLEAN_REBUILD", "1") == "1"
 
-SOURCE_ORDER = os.getenv(
-    "LOTTO_SOURCE_ORDER",
-    "lottotapa_all,dhlottery,lottotapa_single",
-).split(",")
+SOURCE_ORDER = [
+    s.strip()
+    for s in os.getenv("LOTTO_SOURCE_ORDER", "lottotapa_single,dhlottery").split(",")
+    if s.strip()
+]
 
 HEADERS_HTML = {
     "User-Agent": (
@@ -61,11 +58,6 @@ HEADERS_JSON = {
     "X-Requested-With": "XMLHttpRequest",
 }
 
-LOTTOTAPA_ALL_CACHE = {
-    "tried": False,
-    "text": None,
-}
-
 def log(msg):
     print(str(msg), flush=True)
 
@@ -78,6 +70,22 @@ def estimated_latest_round():
     today = datetime.now(KST).date()
     weeks = (today - FIRST_DRAW_DATE).days // 7
     return max(1, weeks + 1)
+
+def strip_html(raw):
+    raw = re.sub(r"(?is)<script.*?</script>", " ", raw)
+    raw = re.sub(r"(?is)<style.*?</style>", " ", raw)
+    raw = re.sub(r"(?i)<br\s*/?>", "\n", raw)
+    raw = re.sub(r"(?i)</(div|p|li|tr|td|h1|h2|h3|h4|h5|h6|span|strong|em)>", "\n", raw)
+    raw = re.sub(r"(?is)<[^>]+>", "\n", raw)
+    raw = html.unescape(raw)
+
+    lines = []
+    for line in raw.splitlines():
+        line = re.sub(r"\s+", " ", line).strip()
+        if line:
+            lines.append(line)
+
+    return "\n".join(lines)
 
 def is_valid_draw(draw):
     if not isinstance(draw, dict):
@@ -113,13 +121,13 @@ def is_valid_draw(draw):
 
     return True
 
-def normalize_draw(draw, source_name):
+def normalize_draw(draw, source):
     draw = dict(draw)
     draw["round"] = int(draw["round"])
+    draw["date"] = str(draw["date"])
     draw["numbers"] = [int(x) for x in draw["numbers"]]
     draw["bonus"] = int(draw["bonus"])
-    draw["date"] = str(draw["date"])
-    draw["source"] = source_name
+    draw["source"] = source
 
     for key in ["w1", "a1", "w2", "a2", "w3", "a3"]:
         try:
@@ -128,27 +136,6 @@ def normalize_draw(draw, source_name):
             draw[key] = 0
 
     return draw
-
-def merge_draw(old, new):
-    """
-    새 데이터가 prize 값을 못 가져와 0인 경우,
-    기존 데이터의 prize 값이 있으면 보존.
-    """
-    if not old:
-        return new
-
-    merged = dict(old)
-    merged.update(new)
-
-    for key in ["w1", "a1", "w2", "a2", "w3", "a3"]:
-        if int(new.get(key) or 0) == 0 and int(old.get(key) or 0) > 0:
-            merged[key] = old[key]
-
-    return merged
-
-# ------------------------------------------------------------
-# 1) 동행복권 공식 JSON
-# ------------------------------------------------------------
 
 def parse_dhlottery_json(text, round_no):
     text = (text or "").strip()
@@ -199,37 +186,17 @@ def fetch_dhlottery(round_no):
 
     return None
 
-# ------------------------------------------------------------
-# 2) 로또타파 HTML 파싱
-# ------------------------------------------------------------
-
-def strip_html(raw):
-    raw = re.sub(r"(?is)<script.*?</script>", " ", raw)
-    raw = re.sub(r"(?is)<style.*?</style>", " ", raw)
-    raw = re.sub(r"(?i)<br\s*/?>", "\n", raw)
-    raw = re.sub(r"(?i)</(div|p|li|tr|td|h1|h2|h3|h4|h5|h6|span)>", "\n", raw)
-    raw = re.sub(r"(?is)<[^>]+>", "\n", raw)
-    raw = html.unescape(raw)
-
-    lines = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if line:
-            lines.append(line)
-
-    return "\n".join(lines)
-
-def parse_lottotapa_html(raw, round_no):
+def parse_lottotapa_single(raw, round_no):
     text = strip_html(raw)
 
-    patterns = [
+    # 개별 회차 페이지에서만 정확히 파싱
+    title_patterns = [
         rf"{round_no}회\s*로또\s*당첨번호\s*\((\d{{4}}-\d{{2}}-\d{{2}})\)",
         rf"{round_no}회\s*동행복권\s*로또\s*당첨번호\s*\(\s*추첨일자\s*:\s*(\d{{4}}-\d{{2}}-\d{{2}})\s*\)",
-        rf"{round_no}회.*?(\d{{4}}-\d{{2}}-\d{{2}})",
     ]
 
     match = None
-    for pattern in patterns:
+    for pattern in title_patterns:
         match = re.search(pattern, text, re.S)
         if match:
             break
@@ -239,10 +206,10 @@ def parse_lottotapa_html(raw, round_no):
 
     date_str = match.group(1)
 
-    # 날짜 이후 가까운 영역에서 번호 7개 추출
-    chunk = text[match.end(): match.end() + 1800]
+    # 제목 근처만 사용. 너무 넓게 잡으면 다른 회차 번호가 섞임.
+    chunk = text[match.end(): match.end() + 900]
 
-    # "2호기" 같은 추첨기 번호 제거
+    # 추첨기 번호 제거
     chunk = re.sub(r"\b\d+\s*호기\b", " ", chunk)
 
     nums = [
@@ -268,47 +235,12 @@ def parse_lottotapa_html(raw, round_no):
 
     return draw if is_valid_draw(draw) else None
 
-def get_lottotapa_all_page():
-    if LOTTOTAPA_ALL_CACHE["tried"]:
-        return LOTTOTAPA_ALL_CACHE["text"]
-
-    LOTTOTAPA_ALL_CACHE["tried"] = True
-
-    url = "https://lottotapa.com/stat/result_all.php"
-
-    try:
-        log("로또타파 전체 회차 페이지 로드")
-        text = fetch_text(url, HEADERS_HTML, PAGE_TIMEOUT)
-        LOTTOTAPA_ALL_CACHE["text"] = text
-        log("로또타파 전체 회차 페이지 로드 성공")
-        return text
-    except Exception as e:
-        log(f"로또타파 전체 페이지 실패: {e}")
-        LOTTOTAPA_ALL_CACHE["text"] = None
-        return None
-
-def fetch_lottotapa_all(round_no):
-    raw = get_lottotapa_all_page()
-
-    if not raw:
-        return None
-
-    try:
-        draw = parse_lottotapa_html(raw, round_no)
-
-        if draw:
-            return normalize_draw(draw, "lottotapa_all")
-    except Exception as e:
-        log(f"  lottotapa_all 파싱 실패 {round_no}회: {e}")
-
-    return None
-
 def fetch_lottotapa_single(round_no):
     url = f"https://lottotapa.com/stat/result/{round_no}"
 
     try:
         raw = fetch_text(url, HEADERS_HTML, PAGE_TIMEOUT)
-        draw = parse_lottotapa_html(raw, round_no)
+        draw = parse_lottotapa_single(raw, round_no)
 
         if draw:
             return normalize_draw(draw, "lottotapa_single")
@@ -317,32 +249,46 @@ def fetch_lottotapa_single(round_no):
 
     return None
 
-# ------------------------------------------------------------
-# 멀티 소스 선택
-# ------------------------------------------------------------
-
 SOURCE_FUNCS = {
-    "lottotapa_all": fetch_lottotapa_all,
-    "dhlottery": fetch_dhlottery,
     "lottotapa_single": fetch_lottotapa_single,
+    "dhlottery": fetch_dhlottery,
 }
 
 def fetch_round(round_no):
-    for source_name in SOURCE_ORDER:
-        source_name = source_name.strip()
+    for source in SOURCE_ORDER:
+        func = SOURCE_FUNCS.get(source)
 
-        if source_name not in SOURCE_FUNCS:
+        if not func:
             continue
 
-        draw = SOURCE_FUNCS[source_name](round_no)
+        draw = func(round_no)
 
         if draw and is_valid_draw(draw):
-            log(f"  {source_name} 성공 {round_no}회")
+            log(f"  {source} 성공 {round_no}회")
             return draw
 
     return None
 
-def find_latest(existing):
+def load_existing():
+    if not DATA_PATH.exists():
+        log("기존 lotto_data.json 없음.")
+        return {}
+
+    try:
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        existing = {}
+
+        for item in data.get("draws", []):
+            if "round" in item and is_valid_draw(item):
+                existing[int(item["round"])] = item
+
+        log(f"기존 데이터 로드: {len(existing)}회차")
+        return existing
+    except Exception as e:
+        log(f"기존 파일 읽기 실패: {e}")
+        return {}
+
+def find_latest():
     log("최신 회차 탐색 시작")
 
     estimate = estimated_latest_round()
@@ -363,51 +309,46 @@ def find_latest(existing):
 
         time.sleep(0.1)
 
-    if existing:
-        latest_round = max(existing.keys())
-        log(f"새 데이터 소스 전부 실패. 기존 캐시 최신 회차 사용: {latest_round}회")
-        return latest_round, existing[latest_round]
+    raise RuntimeError("최신 회차를 찾지 못했습니다.")
 
-    raise RuntimeError("최신 회차를 찾지 못했습니다. 기존 캐시도 없습니다.")
+def validate_no_bad_repeats(draws):
+    """
+    같은 번호+보너스가 여러 회차 연속 반복되면 파싱 오류로 판단.
+    실제로 같은 조합이 연속으로 여러 번 나올 가능성은 사실상 없으므로 자동 차단.
+    """
+    ordered = sorted(draws, key=lambda x: int(x["round"]), reverse=True)
 
-# ------------------------------------------------------------
-# 파일 로드/저장
-# ------------------------------------------------------------
+    streak = 1
+    prev_key = None
 
-def load_existing():
-    if not DATA_PATH.exists():
-        log("기존 lotto_data.json 없음. 새로 생성합니다.")
-        return {}
+    for draw in ordered:
+        key = (tuple(draw["numbers"]), int(draw["bonus"]))
 
-    try:
-        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
-        draws = data.get("draws", [])
-        existing = {}
+        if key == prev_key:
+            streak += 1
+        else:
+            streak = 1
+            prev_key = key
 
-        for item in draws:
-            if "round" in item:
-                existing[int(item["round"])] = item
+        if streak >= 3:
+            raise RuntimeError(
+                f"반복 번호 감지: {streak}회 연속 {list(key[0])} + {key[1]} / 파싱 오류 가능성"
+            )
 
-        log(f"기존 데이터: {len(existing)}회차")
-        return existing
-    except Exception as e:
-        log(f"기존 파일 읽기 실패: {e}")
-        return {}
-
-def save_data(existing):
-    draws = sorted(existing.values(), key=lambda x: int(x["round"]), reverse=True)
+def save_data(draw_map):
+    draws = sorted(draw_map.values(), key=lambda x: int(x["round"]), reverse=True)
 
     if not draws:
         raise RuntimeError("저장할 데이터가 없습니다.")
 
-    sources = sorted(set(str(d.get("source", "unknown")) for d in draws))
+    validate_no_bad_repeats(draws)
 
     payload = {
         "status": "ok",
         "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST"),
         "latest_round": int(draws[0]["round"]),
         "total": len(draws),
-        "sources": sources,
+        "sources": sorted(set(str(d.get("source", "unknown")) for d in draws)),
         "draws": draws,
     }
 
@@ -425,48 +366,55 @@ def save_data(existing):
 
 def main():
     log("=" * 60)
-    log("로또 데이터 멀티 소스 업데이트 시작")
+    log("로또 데이터 안전 업데이트 시작")
     log("=" * 60)
 
     existing = load_existing()
 
-    latest_round, latest_draw = find_latest(existing)
-    existing[latest_round] = merge_draw(existing.get(latest_round), latest_draw)
+    latest_round, latest_draw = find_latest()
 
     start = latest_round
     end = max(1, latest_round - LOTTO_HISTORY_LIMIT + 1)
 
     log(f"수집 범위: {start}회 ~ {end}회")
     log(f"소스 순서: {SOURCE_ORDER}")
+    log(f"클린 재생성: {CLEAN_REBUILD}")
 
+    fresh = {}
     success = 0
     fail = 0
-    skipped = 0
+    cached = 0
 
     for round_no in range(start, end - 1, -1):
-        # 기존 데이터가 있고 최근 3회가 아니면 재수집 생략
-        if round_no in existing and round_no < latest_round - 2:
-            skipped += 1
-            continue
-
         log(f"수집 중: {round_no}회")
 
         draw = fetch_round(round_no)
 
         if draw:
-            existing[round_no] = merge_draw(existing.get(round_no), draw)
+            fresh[round_no] = draw
             success += 1
             log(f"  저장 {round_no}회 {draw['numbers']} + {draw['bonus']} source={draw.get('source')}")
         else:
             fail += 1
-            log(f"  전체 소스 실패 {round_no}회")
+
+            if not CLEAN_REBUILD and round_no in existing:
+                fresh[round_no] = existing[round_no]
+                cached += 1
+                log(f"  기존 캐시 유지 {round_no}회")
+            else:
+                log(f"  전체 소스 실패 {round_no}회")
 
         time.sleep(0.1)
 
-    save_data(existing)
+    min_required = min(30, LOTTO_HISTORY_LIMIT)
+
+    if len(fresh) < min_required:
+        raise RuntimeError(f"수집 데이터 부족: {len(fresh)}개 / 최소 {min_required}개 필요")
+
+    save_data(fresh)
 
     log("=" * 60)
-    log(f"완료 성공: {success}, 실패: {fail}, 기존유지: {skipped}")
+    log(f"완료 성공: {success}, 실패: {fail}, 캐시유지: {cached}")
     log("=" * 60)
 
 if __name__ == "__main__":
