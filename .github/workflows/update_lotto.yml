@@ -3,11 +3,10 @@ name: Update Lotto Data
 on:
   workflow_dispatch:
   schedule:
-    # GitHub Actions cron은 기본 UTC 기준.
-    # 토요일 22:45 KST = 토요일 13:45 UTC
-    - cron: "45 13 * * 6"
-    # 일요일 00:45 KST = 토요일 15:45 UTC
-    - cron: "45 15 * * 6"
+    # 토요일 22:50 KST = 토요일 13:50 UTC
+    - cron: "50 13 * * 6"
+    # 일요일 00:50 KST = 토요일 15:50 UTC
+    - cron: "50 15 * * 6"
 
 permissions:
   contents: write
@@ -19,7 +18,7 @@ concurrency:
 jobs:
   update-lotto:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -34,9 +33,10 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           LOTTO_HISTORY_LIMIT: "120"
-          DHL_TIMEOUT: "3"
+          LOTTO_CLEAN_REBUILD: "1"
           PAGE_TIMEOUT: "10"
-          LOTTO_SOURCE_ORDER: "lottotapa_all,dhlottery,lottotapa_single"
+          DHL_TIMEOUT: "4"
+          LOTTO_SOURCE_ORDER: "lottotapa_single,dhlottery"
         run: |
           python -u fetch_lotto.py
 
@@ -45,10 +45,35 @@ jobs:
           python -m json.tool lotto_data.json > /tmp/lotto_data_check.json
           python - <<'PY'
           import json
+
           data = json.load(open("lotto_data.json", encoding="utf-8"))
+
           assert data["status"] == "ok"
           assert data["latest_round"] >= 1
-          assert len(data["draws"]) >= 1
+          assert len(data["draws"]) >= 30
+
+          draws = sorted(data["draws"], key=lambda x: int(x["round"]), reverse=True)
+
+          prev = None
+          streak = 1
+
+          for d in draws:
+              key = (tuple(d["numbers"]), int(d["bonus"]))
+
+              assert len(d["numbers"]) == 6
+              assert len(set(d["numbers"])) == 6
+              assert all(1 <= n <= 45 for n in d["numbers"])
+              assert 1 <= d["bonus"] <= 45
+              assert d["bonus"] not in d["numbers"]
+
+              if key == prev:
+                  streak += 1
+              else:
+                  streak = 1
+                  prev = key
+
+              assert streak < 3, f"반복 번호 오류 감지: {d['round']}회 {key}"
+
           print("JSON_OK")
           print("latest_round =", data["latest_round"])
           print("total =", data["total"])
