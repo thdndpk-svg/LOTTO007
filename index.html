@@ -261,8 +261,8 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);
     <div class="card-title"><span>⏭️</span>건너뛰기 패턴 분석 (최근 10회차 기준)</div>
     <div class="skip-tabs">
       <div class="skip-tab on" data-skip="1" onclick="switchSkip(1,this)">🔢 1회차 건너뛰기</div>
-      <div class="skip-tab"   data-skip="2" onclick="switchSkip(2,this)">🔢 2회차 건너뛰기</div>
-      <div class="skip-tab"   data-skip="3" onclick="switchSkip(3,this)">🔢 3회차 건너뛰기</div>
+      <div class="skip-tab" data-skip="2" onclick="switchSkip(2,this)">🔢 2회차 건너뛰기</div>
+      <div class="skip-tab" data-skip="3" onclick="switchSkip(3,this)">🔢 3회차 건너뛰기</div>
     </div>
     <div id="skipArea">
       <div class="loading-box"><div class="spinner"></div><p>데이터 로딩 후 분석됩니다...</p></div>
@@ -310,9 +310,11 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);
 // 데이터
 // ═══════════════════════════════════════════════════════════════
 const DATA_URL = "lotto_data.json";
-let DB = [];          // 전체 회차 데이터 (최신순)
-let curSkip = 1;      // 현재 선택 건너뛰기
-let SKIP_FREQ = {1:{},2:{},3:{}};  // 건너뛰기별 번호 빈도
+let DB = [];
+let curSkip = 1;
+let SKIP_FREQ = {1:{},2:{},3:{}};
+let analysisTimer = null;
+let analysisRunId = 0;
 
 // ── 유틸 ──────────────────────────────────────────────────────
 const bCls = n => n<=10?"b-y":n<=20?"b-s":n<=30?"b-r":n<=40?"b-p":"b-g";
@@ -320,7 +322,14 @@ const bHTML = (nums,sz="") =>
   nums.map(n=>`<div class="ball ${bCls(n)} ${sz}">${n}</div>`).join("");
 const fmt = v => typeof v==="number"&&!isNaN(v) ? v.toLocaleString("ko-KR")+"원" : "-";
 const fmtN = v => typeof v==="number"&&!isNaN(v) ? v.toLocaleString("ko-KR")+"명" : "-";
-function addDays(d,n){const dt=new Date(d+"T00:00:00");dt.setDate(dt.getDate()+n);return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;}
+function addDays(d,n){
+  const dt=new Date(d+"T00:00:00");
+  dt.setDate(dt.getDate()+n);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+function delay(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
+}
 
 function setStatus(type,text){
   const el=document.getElementById("statusBadge");
@@ -332,18 +341,28 @@ function setStatus(type,text){
 async function loadData(){
   setStatus("load","데이터 로딩 중...");
 
-  // lotto_data.json 만 사용 (GitHub Actions가 생성)
-  // 없으면 안내 메시지만 표시 — 무한로딩 없음
   try{
-    const r=await fetch(DATA_URL+"?t="+Date.now(),{cache:"no-store"});
+    const cacheVer = Math.floor(Date.now()/600000);
+    const r=await fetch(DATA_URL+"?v="+cacheVer,{cache:"default"});
+
     if(!r.ok) throw new Error("lotto_data.json 없음 (HTTP "+r.status+")");
+
     const txt=await r.text();
-    if(!txt||txt.trim().startsWith("<"))
+
+    if(!txt||txt.trim().startsWith("<")){
       throw new Error("lotto_data.json 없음 — HTML 반환됨");
+    }
+
     const json=JSON.parse(txt);
-    if(!json.draws||!json.draws.length)
+
+    if(!json.draws||!json.draws.length){
       throw new Error("draws 데이터 비어있음");
-    DB=json.draws.filter(d=>d.numbers&&d.numbers.length===6).sort((a,b)=>b.round-a.round);
+    }
+
+    DB=json.draws
+      .filter(d=>d.numbers&&d.numbers.length===6)
+      .sort((a,b)=>b.round-a.round);
+
     setStatus("ok",`${DB.length}회차 로드 완료 · ${json.updated||""}`);
   }catch(e){
     throw new Error(e.message);
@@ -385,7 +404,6 @@ function renderLatest(){
     <div class="ball ${bCls(d.bonus)}" style="opacity:.8;border:2px dashed rgba(255,255,255,.3);">${d.bonus}</div>
   </div>
 
-  <!-- 미니 패턴 -->
   <div style="margin-bottom:12px;">
     <div style="font-size:11px;font-weight:900;color:var(--muted);letter-spacing:1.5px;margin-bottom:6px;">로또 용지 패턴</div>
     <div class="mini-grid-wrap" style="max-width:360px;">
@@ -393,7 +411,6 @@ function renderLatest(){
     </div>
   </div>
 
-  <!-- 등수별 당첨 정보 -->
   <div style="font-size:11px;font-weight:900;color:var(--muted);letter-spacing:1.5px;margin-bottom:8px;">등수별 당첨 현황</div>
   <div class="prize-row">
     <div class="prize-box">
@@ -413,7 +430,6 @@ function renderLatest(){
     </div>
   </div>`;
 
-  // SVG 선 그리기
   setTimeout(()=>drawSVG("latest",sorted),150);
 }
 
@@ -443,8 +459,10 @@ function drawSVG(id, nums){
     const c=document.getElementById(`mc_${id}_${n}`);
     if(!c) return null;
     const cr=c.getBoundingClientRect();
-    return{x:((cr.left-gr.left+cr.width/2)/gr.width)*100,
-           y:((cr.top-gr.top+cr.height/2)/gr.height)*100};
+    return{
+      x:((cr.left-gr.left+cr.width/2)/gr.width)*100,
+      y:((cr.top-gr.top+cr.height/2)/gr.height)*100
+    };
   }).filter(Boolean);
   if(pts.length<2) return;
   let d=`M${pts[0].x},${pts[0].y}`;
@@ -458,7 +476,6 @@ function drawSVG(id, nums){
 // ② 건너뛰기 분석
 // ═══════════════════════════════════════════════════════════════
 function analyzeSkip(skip){
-  // 최근 10쌍: 현재 → skip 간격으로 비교
   const pairs=[];
   const freqMap={};
   for(let i=1;i<=45;i++) freqMap[i]=0;
@@ -469,15 +486,17 @@ function analyzeSkip(skip){
     if(!prev) break;
     const overlapNums=cur.numbers.filter(n=>prev.numbers.includes(n));
     pairs.push({cur,prev,skip,overlapNums});
-    // 건너뛰기 이후 나온 번호 빈도 (cur의 번호)
     cur.numbers.forEach(n=>freqMap[n]++);
   }
 
-  // 전체 역사에서 skip 간격 번호 빈도
-  const allFreq={};for(let i=1;i<=45;i++) allFreq[i]=0;
+  const allFreq={};
+  for(let i=1;i<=45;i++) allFreq[i]=0;
+
   for(let i=0;i<DB.length-skip;i++){
     const A=new Set(DB[i].numbers);
-    DB[i+skip].numbers.forEach(n=>{if(A.has(n)) allFreq[n]++;});
+    DB[i+skip].numbers.forEach(n=>{
+      if(A.has(n)) allFreq[n]++;
+    });
   }
 
   SKIP_FREQ[skip]=allFreq;
@@ -485,7 +504,7 @@ function analyzeSkip(skip){
 }
 
 function renderSkip(skip){
-  const{pairs,freqMap,allFreq}=analyzeSkip(skip);
+  const{pairs,allFreq}=analyzeSkip(skip);
   const el=document.getElementById("skipArea");
   const skipNames=["","1회차","2회차","3회차"];
 
@@ -494,7 +513,6 @@ function renderSkip(skip){
     현재 회차에서 ${skip}회 건너 비교했을 때 <b style="color:var(--gold);">반복 출현한 번호</b>를 분석합니다.
   </div>`;
 
-  // 쌍별 표시
   html+=`<div class="skip-history">`;
   pairs.forEach(({cur,prev,overlapNums})=>{
     const cSorted=[...cur.numbers].sort((a,b)=>a-b);
@@ -524,7 +542,6 @@ function renderSkip(skip){
   });
   html+=`</div>`;
 
-  // 빈도 상위 번호
   const topFreq=Object.entries(allFreq).sort((a,b)=>b[1]-a[1]).slice(0,10);
   html+=`<div style="margin-top:14px;">
     <div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:8px;letter-spacing:1px;">
@@ -555,19 +572,21 @@ function switchSkip(skip,el){
 // ═══════════════════════════════════════════════════════════════
 function renderHeatmap(){
   const el=document.getElementById("heatmapArea");
-  // 세 건너뛰기 합산 빈도
   const combined={};
   for(let n=1;n<=45;n++) combined[n]=0;
+
   [1,2,3].forEach(skip=>{
     const freq=SKIP_FREQ[skip]||{};
     for(let n=1;n<=45;n++) combined[n]+=(freq[n]||0);
   });
+
   const maxVal=Math.max(...Object.values(combined));
 
   let html=`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
     3가지 건너뛰기 분석 겹침 횟수 합산 — 높을수록 다음 회차 출현 유력
   </div>
   <div class="heatmap-grid">`;
+
   for(let n=1;n<=45;n++){
     const v=combined[n]||0;
     const pct=maxVal>0?Math.round(v/maxVal*100):0;
@@ -578,9 +597,9 @@ function renderHeatmap(){
       <div class="hm-bar" style="width:${pct}%;"></div>
     </div>`;
   }
+
   html+=`</div>`;
 
-  // 상위 6개 강조
   const top6=Object.entries(combined).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([n])=>Number(n)).sort((a,b)=>a-b);
   html+=`<div style="margin-top:12px;background:var(--bg3);border-radius:12px;padding:12px;">
     <div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:8px;">
@@ -588,6 +607,7 @@ function renderHeatmap(){
     </div>
     <div class="balls-row">${bHTML(top6)}</div>
   </div>`;
+
   el.innerHTML=html;
 }
 
@@ -601,14 +621,19 @@ function numsToMask(nums){
 }
 function maskSim(a,b){
   let same=0,tot=0;
-  for(let i=0;i<45;i++){if(a[i]||b[i])tot++;if(a[i]&&b[i])same++;}
+  for(let i=0;i<45;i++){
+    if(a[i]||b[i])tot++;
+    if(a[i]&&b[i])same++;
+  }
   return tot?same/tot:0;
 }
 function lineVec(nums){
   const s=[...nums].sort((a,b)=>a-b);
   const pos=s.map(n=>({r:Math.floor((n-1)/9),c:(n-1)%9}));
   const vecs=[];
-  for(let i=0;i<pos.length-1;i++) vecs.push({dr:pos[i+1].r-pos[i].r,dc:pos[i+1].c-pos[i].c});
+  for(let i=0;i<pos.length-1;i++){
+    vecs.push({dr:pos[i+1].r-pos[i].r,dc:pos[i+1].c-pos[i].c});
+  }
   const avgDr=vecs.reduce((s,v)=>s+v.dr,0)/vecs.length;
   const avgDc=vecs.reduce((s,v)=>s+v.dc,0)/vecs.length;
   const dir=vecs.map(v=>v.dr>0?1:v.dr<0?-1:0).join("");
@@ -617,7 +642,8 @@ function lineVec(nums){
 function lineVecSim(a,b){
   let sc=0;
   const ml=Math.min(a.dir.length,b.dir.length);
-  let dm=0;for(let i=0;i<ml;i++) if(a.dir[i]===b.dir[i]) dm++;
+  let dm=0;
+  for(let i=0;i<ml;i++) if(a.dir[i]===b.dir[i]) dm++;
   sc+=ml?dm/ml*0.4:0;
   sc+=Math.max(0,(1-Math.abs(a.avgDr-b.avgDr)/4))*0.3;
   sc+=Math.max(0,(1-Math.abs(a.avgDc-b.avgDc)/4))*0.3;
@@ -626,22 +652,25 @@ function lineVecSim(a,b){
 
 function buildTop5(){
   const el=document.getElementById("predictArea");
-  if(DB.length<20){el.innerHTML=`<div class="err-box">데이터가 부족합니다 (최소 20회차 필요).</div>`;return;}
+  if(DB.length<20){
+    el.innerHTML=`<div class="err-box">데이터가 부족합니다 (최소 20회차 필요).</div>`;
+    return;
+  }
 
   const cur=DB[0];
   const curMask=numsToMask(cur.numbers);
   const curVec=lineVec(cur.numbers);
 
-  // 건너뛰기 종합 빈도 (가중치용)
   const skipCombined={};
   for(let n=1;n<=45;n++) skipCombined[n]=0;
+
   [1,2,3].forEach(skip=>{
     const freq=SKIP_FREQ[skip]||{};
     for(let n=1;n<=45;n++) skipCombined[n]+=(freq[n]||0)*(4-skip);
   });
+
   const maxSkip=Math.max(...Object.values(skipCombined))||1;
 
-  // 전체 DB에서 유사 패턴 찾기
   const cands=[];
   for(let i=1;i<DB.length-1;i++){
     const h=DB[i];
@@ -651,14 +680,16 @@ function buildTop5(){
     const lSim=lineVecSim(curVec,hVec);
     const total=mSim*0.5+lSim*0.5;
     if(total>0.08){
-      const nxt=DB[i-1]; // 다음 회차 (최신순 정렬이므로 i-1)
+      const nxt=DB[i-1];
       cands.push({histR:h,nextR:nxt,sim:total,mSim,lSim});
     }
   }
+
   cands.sort((a,b)=>b.sim-a.sim);
 
-  // 후보 중 번호 가중 빈도 계산
-  const freq={};for(let n=1;n<=45;n++) freq[n]=0;
+  const freq={};
+  for(let n=1;n<=45;n++) freq[n]=0;
+
   cands.slice(0,30).forEach((c,ri)=>{
     const w=c.sim*(1-ri/30);
     c.nextR.numbers.forEach(n=>{
@@ -667,10 +698,8 @@ function buildTop5(){
     });
   });
 
-  // 번호 정렬
   const sorted=Object.entries(freq).sort((a,b)=>b[1]-a[1]);
 
-  // TOP5 세트 생성 (다양하게: 각각 살짝 다른 조합)
   const rankInfo=[
     {emoji:"🥇",cls:"r1-rank",cbcls:"cb-gold",label:"1위"},
     {emoji:"🥈",cls:"r2-rank",cbcls:"cb-silver",label:"2위"},
@@ -680,7 +709,7 @@ function buildTop5(){
   ];
 
   const top5Sets=[];
-  // 1위: 순수 가중빈도 상위 6개
+
   top5Sets.push({
     nums:sorted.slice(0,6).map(([n])=>Number(n)).sort((a,b)=>a-b),
     score:(sorted[0]?.[1]||0),
@@ -688,24 +717,33 @@ function buildTop5(){
     ref:cands[0],
     tags:["종합 1위","패턴유사","건너뛰기"],
   });
-  // 2위: 유사도 TOP 20 중 1회차 건너뛰기 편향
-  {const f={};for(let n=1;n<=45;n++) f[n]=0;
-  cands.slice(0,20).forEach(c=>{c.nextR.numbers.forEach(n=>{f[n]+=c.sim;});});
-  const s1=Object.entries(SKIP_FREQ[1]||{}).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n])=>Number(n));
-  const combined=Object.entries(f).sort((a,b)=>b[1]-a[1]).map(([n])=>Number(n));
-  const merged=[...new Set([...s1,...combined])].slice(0,6).sort((a,b)=>a-b);
-  top5Sets.push({nums:merged,score:(sorted[1]?.[1]||0)*0.95,basis:"1회차 건너뛰기 편향",ref:cands[1],tags:["1회건너뛰기","반복출현"]});}
-  // 3위: 2회차 건너뛰기 편향
-  {const s2=Object.entries(SKIP_FREQ[2]||{}).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n])=>Number(n));
-  const combined=sorted.slice(0,10).map(([n])=>Number(n));
-  const merged=[...new Set([...s2,...combined])].slice(0,6).sort((a,b)=>a-b);
-  top5Sets.push({nums:merged,score:(sorted[2]?.[1]||0)*0.9,basis:"2회차 건너뛰기 편향",ref:cands[2],tags:["2회건너뛰기","3주패턴"]});}
-  // 4위: 3회차 건너뛰기 편향
-  {const s3=Object.entries(SKIP_FREQ[3]||{}).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n])=>Number(n));
-  const combined=sorted.slice(2,12).map(([n])=>Number(n));
-  const merged=[...new Set([...s3,...combined])].slice(0,6).sort((a,b)=>a-b);
-  top5Sets.push({nums:merged,score:(sorted[3]?.[1]||0)*0.85,basis:"3회차 건너뛰기 편향",ref:cands[3],tags:["3회건너뛰기","한달패턴"]});}
-  // 5위: 유사도 최상위 다음 회차 그대로
+
+  {
+    const f={};
+    for(let n=1;n<=45;n++) f[n]=0;
+    cands.slice(0,20).forEach(c=>{
+      c.nextR.numbers.forEach(n=>{f[n]+=c.sim;});
+    });
+    const s1=Object.entries(SKIP_FREQ[1]||{}).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n])=>Number(n));
+    const combined=Object.entries(f).sort((a,b)=>b[1]-a[1]).map(([n])=>Number(n));
+    const merged=[...new Set([...s1,...combined])].slice(0,6).sort((a,b)=>a-b);
+    top5Sets.push({nums:merged,score:(sorted[1]?.[1]||0)*0.95,basis:"1회차 건너뛰기 편향",ref:cands[1],tags:["1회건너뛰기","반복출현"]});
+  }
+
+  {
+    const s2=Object.entries(SKIP_FREQ[2]||{}).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n])=>Number(n));
+    const combined=sorted.slice(0,10).map(([n])=>Number(n));
+    const merged=[...new Set([...s2,...combined])].slice(0,6).sort((a,b)=>a-b);
+    top5Sets.push({nums:merged,score:(sorted[2]?.[1]||0)*0.9,basis:"2회차 건너뛰기 편향",ref:cands[2],tags:["2회건너뛰기","3주패턴"]});
+  }
+
+  {
+    const s3=Object.entries(SKIP_FREQ[3]||{}).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n])=>Number(n));
+    const combined=sorted.slice(2,12).map(([n])=>Number(n));
+    const merged=[...new Set([...s3,...combined])].slice(0,6).sort((a,b)=>a-b);
+    top5Sets.push({nums:merged,score:(sorted[3]?.[1]||0)*0.85,basis:"3회차 건너뛰기 편향",ref:cands[3],tags:["3회건너뛰기","한달패턴"]});
+  }
+
   if(cands[0]){
     const nextNums=[...cands[0].nextR.numbers].sort((a,b)=>a-b);
     top5Sets.push({nums:nextNums,score:(sorted[4]?.[1]||0)*0.8,basis:`${cands[0].histR.round}회와 유사 → ${cands[0].nextR.round}회 번호`,ref:cands[0],tags:["직접참조","최고유사도"]});
@@ -713,6 +751,7 @@ function buildTop5(){
 
   const maxScore=top5Sets[0]?.score||1;
   let html=`<div class="predict-grid">`;
+
   top5Sets.forEach((set,i)=>{
     const info=rankInfo[i];
     const pct=Math.round((set.score/maxScore)*100);
@@ -740,6 +779,7 @@ function buildTop5(){
       </div>
     </div>`;
   });
+
   html+=`</div>
   <div style="margin-top:14px;background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:12px;">
     <div style="font-size:10px;color:var(--muted);line-height:1.8;">
@@ -747,22 +787,23 @@ function buildTop5(){
       📊 분석 기반: ${DB.length}회차 전체 데이터 / 유사 패턴 후보 ${Math.min(cands.length,30)}개 / 3종 건너뛰기 가중합산
     </div>
   </div>`;
+
   el.innerHTML=html;
-  // 미니패턴 SVG 그리기
   setTimeout(()=>top5Sets.forEach((set,i)=>drawSVG("p"+i,set.nums)),200);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // ⑥ 역대 최다 출현 패턴 TOP3
 // ═══════════════════════════════════════════════════════════════
-
-// 패턴 시그니처: 구간분포 + 홀짝비율 + 합계구간 + AC값구간
 function calcAC(nums){
   const s=[...nums].sort((a,b)=>a-b);
   const d=new Set();
-  for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) d.add(s[j]-s[i]);
+  for(let i=0;i<s.length;i++){
+    for(let j=i+1;j<s.length;j++) d.add(s[j]-s[i]);
+  }
   return d.size-5;
 }
+
 function getPatternSig(nums){
   const s=[...nums].sort((a,b)=>a-b);
   const sum=s.reduce((a,b)=>a+b,0);
@@ -776,7 +817,6 @@ function getPatternSig(nums){
   return `L${low}M${mid}H${high}_O${odd}_${sumGrp}_AC${acGrp}`;
 }
 
-// 패턴 시그니처를 읽기 쉬운 설명으로
 function sigToDesc(sig){
   const m=sig.match(/L(\d)M(\d)H(\d)_O(\d)_([A-Z]+)_AC([A-Za-z]+)/);
   if(!m) return sig;
@@ -790,19 +830,24 @@ function sigToDesc(sig){
 
 function renderTopPatterns(){
   const el=document.getElementById("topPatternArea");
-  if(!DB.length){ el.innerHTML=`<div class="err-box">데이터 없음</div>`; return; }
+  if(!DB.length){
+    el.innerHTML=`<div class="err-box">데이터 없음</div>`;
+    return;
+  }
 
-  // 전체 회차 패턴 시그니처 집계
   const sigMap={};
   DB.forEach(d=>{
     const sig=getPatternSig(d.numbers);
     if(!sigMap[sig]) sigMap[sig]={count:0,rounds:[],exNums:null,exDate:null};
     sigMap[sig].count++;
     sigMap[sig].rounds.push(d.round);
-    if(!sigMap[sig].exNums){ sigMap[sig].exNums=d.numbers; sigMap[sig].exDate=d.date; sigMap[sig].exRound=d.round; }
+    if(!sigMap[sig].exNums){
+      sigMap[sig].exNums=d.numbers;
+      sigMap[sig].exDate=d.date;
+      sigMap[sig].exRound=d.round;
+    }
   });
 
-  // 최다 출현 순 정렬
   const sorted=Object.entries(sigMap).sort((a,b)=>b[1].count-a[1].count);
   const top3=sorted.slice(0,3);
   const total=DB.length;
@@ -813,6 +858,7 @@ function renderTopPatterns(){
   ];
 
   let html=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">`;
+
   top3.forEach(([sig,data],i)=>{
     const info=rankInfo[i];
     const pct=(data.count/total*100).toFixed(1);
@@ -844,13 +890,13 @@ function renderTopPatterns(){
       </div>
       <div style="font-size:10px;color:var(--muted);line-height:1.6;">
         최근 출현 회차:<br>
-        <b style="color:var(--sub);">${recentRounds}${data.rounds.length>5?" 외 "+( data.rounds.length-5)+"회":""}회</b>
+        <b style="color:var(--sub);">${recentRounds}${data.rounds.length>5?" 외 "+(data.rounds.length-5)+"회":""}회</b>
       </div>
     </div>`;
   });
+
   html+=`</div>`;
 
-  // 패턴 분포 요약 바
   html+=`<div style="margin-top:18px;background:var(--bg3);border:1px solid var(--line);border-radius:14px;padding:14px;">
     <div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;letter-spacing:1px;">
       📊 전체 패턴 유형 분포 (상위 10개)
@@ -858,8 +904,7 @@ function renderTopPatterns(){
     <div style="display:grid;gap:6px;">
       ${sorted.slice(0,10).map(([sig,data],i)=>{
         const pct=(data.count/total*100).toFixed(1);
-        const d=sigToDesc(sig).split("
-")[0];
+        const d=sigToDesc(sig).split("\n")[0];
         return `
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:24px;font-size:11px;font-weight:900;color:var(--muted);flex-shrink:0;">${i+1}</div>
@@ -880,6 +925,7 @@ function renderTopPatterns(){
   </div>`;
 
   el.innerHTML=html;
+
   setTimeout(()=>top3.forEach(([,data],i)=>{
     const exSorted=[...data.exNums].sort((a,b)=>a-b);
     drawSVG("tp"+i,exSorted);
@@ -887,36 +933,105 @@ function renderTopPatterns(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 로딩 개선: 최신 회차 먼저 표시 → 분석은 뒤에서 순차 실행
+// ═══════════════════════════════════════════════════════════════
+async function runHeavyAnalysisLater(runId){
+  try{
+    if(runId!==analysisRunId) return;
+
+    setStatus("load","최신 회차 표시 완료 · 건너뛰기 분석 중...");
+
+    await delay(80);
+    if(runId!==analysisRunId) return;
+    analyzeSkip(1);
+
+    await delay(50);
+    if(runId!==analysisRunId) return;
+    analyzeSkip(2);
+
+    await delay(50);
+    if(runId!==analysisRunId) return;
+    analyzeSkip(3);
+
+    await delay(50);
+    if(runId!==analysisRunId) return;
+    renderSkip(curSkip);
+
+    setStatus("load","히트맵 계산 중...");
+
+    await delay(50);
+    if(runId!==analysisRunId) return;
+    renderHeatmap();
+
+    setStatus("load","TOP5 패턴 학습 중...");
+
+    await delay(50);
+    if(runId!==analysisRunId) return;
+    buildTop5();
+
+    setStatus("load","전체 패턴 TOP3 분석 중...");
+
+    await delay(50);
+    if(runId!==analysisRunId) return;
+    renderTopPatterns();
+
+    setStatus("ok",`${DB.length}회차 로드 완료 · 분석 완료`);
+  }catch(e){
+    console.error(e);
+    setStatus("err","분석 중 오류");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 메인
 // ═══════════════════════════════════════════════════════════════
 async function init(){
-  const btn=document.getElementById("refreshBtn");
-  btn.classList.add("loading");btn.disabled=true;
+  analysisRunId++;
+  const runId=analysisRunId;
 
-  // 로딩 상태 초기화
+  if(analysisTimer){
+    clearTimeout(analysisTimer);
+    analysisTimer=null;
+  }
+
+  const btn=document.getElementById("refreshBtn");
+  if(btn){
+    btn.classList.add("loading");
+    btn.disabled=true;
+  }
+
   document.getElementById("latestCard").innerHTML=
     `<div class="card-title"><span>🏆</span>최신 회차 당첨 정보</div>
      <div class="loading-box"><div class="spinner"></div><p>데이터 로딩 중...</p></div>`;
+
   document.getElementById("skipArea").innerHTML=
-    `<div class="loading-box"><div class="spinner"></div><p>분석 중...</p></div>`;
+    `<div class="loading-box"><div class="spinner"></div><p>최신 회차 표시 후 분석됩니다...</p></div>`;
+
   document.getElementById("heatmapArea").innerHTML=
-    `<div class="loading-box"><div class="spinner"></div><p>분석 중...</p></div>`;
+    `<div class="loading-box"><div class="spinner"></div><p>최신 회차 표시 후 분석됩니다...</p></div>`;
+
   document.getElementById("predictArea").innerHTML=
-    `<div class="loading-box"><div class="spinner"></div><p>패턴 학습 중...</p></div>`;
+    `<div class="loading-box"><div class="spinner"></div><p>최신 회차 표시 후 패턴 학습이 시작됩니다...</p></div>`;
+
   document.getElementById("topPatternArea").innerHTML=
-    `<div class="loading-box"><div class="spinner"></div><p>전체 패턴 분석 중...</p></div>`;
+    `<div class="loading-box"><div class="spinner"></div><p>최신 회차 표시 후 전체 패턴을 분석합니다...</p></div>`;
 
   try{
     await loadData();
+
+    if(runId!==analysisRunId) return;
+
     renderLatest();
-    // 건너뛰기 3종 모두 사전 계산
-    analyzeSkip(1);analyzeSkip(2);analyzeSkip(3);
-    renderSkip(curSkip);
-    renderHeatmap();
-    buildTop5();
-    renderTopPatterns();
+    setStatus("ok",`${DB.length}회차 로드 완료 · 최신 회차 표시`);
+
+    analysisTimer=setTimeout(()=>{
+      runHeavyAnalysisLater(runId);
+    },120);
+
   }catch(err){
+    console.error(err);
     setStatus("err","데이터 로드 실패");
+
     document.getElementById("latestCard").innerHTML=
       `<div class="card-title"><span>🏆</span>최신 회차 당첨 정보</div>
        <div class="err-box" style="text-align:left;line-height:2;">
@@ -929,9 +1044,13 @@ async function init(){
          <span style="font-size:10px;color:var(--muted);">오류: ${err.message}</span>
        </div>`;
   }finally{
-    btn.classList.remove("loading");btn.disabled=false;
+    if(btn){
+      btn.classList.remove("loading");
+      btn.disabled=false;
+    }
   }
 }
+
 init();
 </script>
 </body>
