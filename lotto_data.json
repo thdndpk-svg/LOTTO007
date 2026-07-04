@@ -1,12 +1,32 @@
 {
   "status": "ok",
-  "updated": "2026-06-28 01:51:26 KST",
-  "latest_round": 1230,
+  "updated": "2026-07-04 23:54:40 KST",
+  "latest_round": 1231,
   "total": 120,
   "sources": [
     "lottotapa_single"
   ],
   "draws": [
+    {
+      "round": 1231,
+      "date": "2026-07-04",
+      "numbers": [
+        4,
+        13,
+        14,
+        18,
+        31,
+        38
+      ],
+      "bonus": 15,
+      "w1": 0,
+      "a1": 0,
+      "w2": 0,
+      "a2": 0,
+      "w3": 0,
+      "a3": 0,
+      "source": "lottotapa_single"
+    },
     {
       "round": 1230,
       "date": "2026-06-27",
@@ -2379,26 +2399,6 @@
         44
       ],
       "bonus": 24,
-      "w1": 0,
-      "a1": 0,
-      "w2": 0,
-      "a2": 0,
-      "w3": 0,
-      "a3": 0,
-      "source": "lottotapa_single"
-    },
-    {
-      "round": 1111,
-      "date": "2024-03-16",
-      "numbers": [
-        3,
-        13,
-        30,
-        33,
-        43,
-        45
-      ],
-      "bonus": 4,
       "w1": 0,
       "a1": 0,
       "w2": 0,
